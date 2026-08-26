@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/memory-metadata.schema.json",
+  "title": "Illustrative durable memory metadata contract",
+  "description": "示意参考模板，不可直接部署。受保护字段应由服务端控制；当前案例过滤调用方同名键，但采用者也可选择显式拒绝。x-* 仅作说明，不会被 JSON Schema 执行。详见 templates/README.md。",
+
+  "x-template-status": "illustrative-reference",
+
+  "type": "object",
+
+  "x-server-generated": {
+    "description": "以下字段示意受保护字段集合。服务端必须控制最终值；过滤或拒绝调用方同名键由应用代码执行。",
+    "fields": [
+      "owner_id", "memory_user_id",
+      "source_system", "source_platform", "source_profile", "agent_id", "run_id", "event",
+      "observed_at", "written_at_utc", "valid_until",
+      "visibility", "sensitivity", "status", "review_status",
+      "supersedes", "applies_to", "review_operation_key"
+    ],
+    "merge_pattern": "base.update({k: v for k, v in caller_metadata.items() if k not in RESERVED_METADATA_FIELDS})"
+  },
+
+  "required": [
+    "owner_id", "memory_user_id",
+    "source_system", "source_platform", "source_profile", "agent_id",
+    "observed_at", "written_at_utc",
+    "visibility", "sensitivity", "status", "review_status", "applies_to"
+  ],
+
+  "properties": {
+    "owner_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "归属。取自启动时校验过的 owner 常量，不接受调用方输入。",
+      "examples": ["example-owner"]
+    },
+    "memory_user_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "与 owner_id 同源，供底层记忆库使用。召回时两者必须一致。"
+    },
+
+    "source_system":   { "type": "string", "minLength": 1, "description": "写入方系统标识，取自进程启动契约。" },
+    "source_platform": { "type": "string", "minLength": 1, "description": "运行平台，例如 local / remote。" },
+    "source_profile":  { "type": "string", "minLength": 1, "description": "写入方的配置/角色标识。" },
+    "agent_id":        { "type": "string", "minLength": 1, "description": "写入方的 agent 标识。" },
+    "run_id":          { "type": "string", "description": "本次运行标识，用于追溯。" },
+    "event":           { "type": "string", "description": "触发写入的事件类型。" },
+
+    "observed_at":    { "type": "string", "format": "date-time", "description": "事实被观察到的时间（服务端时钟）。" },
+    "written_at_utc": { "type": "string", "format": "date-time", "description": "落库时间（服务端时钟）。" },
+    "valid_until": {
+      "type": "string",
+      "description": "失效时间。空串表示不设失效。注意：召回时解析失败必须判为不可见，不可当作未设置。",
+      "examples": ["", "<ISO8601>"]
+    },
+
+    "visibility": {
+      "type": "string",
+      "enum": ["private", "owner_only", "shared_safe"],
+      "default": "private",
+      "description": "召回白名单枚举。不在枚举内一律不可见。"
+    },
+    "sensitivity": {
+      "type": "string",
+      "enum": ["public", "internal", "sensitive"],
+      "default": "internal"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "legacy", "review_required", "expired", "quarantined", "superseded"],
+      "default": "active",
+      "description": "只有 active 能进入自动召回。"
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["approved", "pending_review", "rejected"],
+      "default": "approved",
+      "description": "只有 approved 能进入自动召回。调用方不得自封 approved。"
+    },
+
+    "supersedes": {
+      "type": "string",
+      "description": "被本条替代的记忆 ID。只能由服务端在替代流程中设置，且设置前须校验源记忆内容未变。",
+      "default": ""
+    },
+    "applies_to": {
+      "type": "array",
+      "description": "适用范围。封闭枚举，未知值必须报错而非提升为 universal。写入范围须为运行时范围的子集。",
+      "items": {
+        "type": "string",
+        "pattern": "^(universal|platform:[a-z0-9-]+|profile:[a-z0-9-]+|project:[a-z0-9-]+)$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [["universal"], ["platform:client-a"], ["project:example-project"]]
+    },
+    "review_operation_key": {
+      "type": "string",
+      "description": "审核操作幂等键。"
+    }
+  },
+
+  "x-content-gates": {
+    "description": "metadata 之外的参考写入闸门。JSON Schema 不会执行这些规则，必须由应用代码实现。",
+    "rules": [
+      { "id": "empty",          "check": "正文为空或纯空白" },
+      { "id": "too_long",       "check": "正文长度超过部署方设定的有限上限" },
+      { "id": "raw_transcript", "check": "正文以会话前缀开头，例如 '[<platform> turn]'、'[<client>] session='" },
+      { "id": "secret_like",    "check": "正文命中密钥正则", "patterns": [
+          "sk-[A-Za-z0-9]{20,}",
+          "Bearer\\s+[A-Za-z0-9._-]{20,}",
+          "eyJ[A-Za-z0-9._-]{20,}",
+          "(?:password|api[_-]?key|secret|token)\\s*[=:]\\s*\\S+"
+      ]}
+    ]
+  },
+
+  "x-retrieval-filter": {
+    "description": "召回时逐条判定的六个参考条件。JSON Schema 不会执行，必须由应用代码实现。",
+    "order": [
+      "owner: 三个归属字段一致且等于当前 owner；为空也判不通过",
+      "status == 'active'",
+      "review_status == 'approved'",
+      "visibility ∈ {private, owner_only, shared_safe}",
+      "valid_until 未过期；解析失败判不通过",
+      "applies_to ∩ RUNTIME_SCOPES 非空；未知 scope 报错而非放行"
+    ]
+  }
+}

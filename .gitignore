@@ -1,0 +1,47 @@
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Real environment/configuration files. Keep documented examples.
+.env
+.env.*
+!.env.example
+!*.example.env
+
+# Local databases and SQLite sidecars.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*-wal
+*-shm
+*-journal
+
+# Logs, backups, and encrypted-volume artifacts.
+*.log
+logs/
+backups/
+*.sparsebundle/
+
+# Generated candidates, health snapshots, and review artifacts.
+candidates/
+.candidates/
+candidate-*.md
+candidate-*.json
+*.candidate.md
+*.candidate.diff
+*.candidate.evidence.json
+review-artifacts/
+review-output/
+review-queue*.json
+review-ledger*.sqlite*
+review-receipt*.json
+health-latest*.json
+
+# Generic local credentials.
+*.pem
+*.key

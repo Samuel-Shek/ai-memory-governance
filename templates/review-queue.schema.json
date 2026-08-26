@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/review-queue.schema.json",
+  "title": "Illustrative memory review queue (body-free metadata)",
+  "description": "示意参考模板，不可直接部署。队列不携带记忆正文，但 ID、哈希、关系、时间和自由文本理由仍可能敏感。x-* 仅作说明，不会被 JSON Schema 执行。详见 templates/README.md。",
+
+  "x-template-status": "illustrative-reference",
+
+  "type": "object",
+  "required": [
+    "schema_version", "generated_at", "owner_id",
+    "automatic_mutation", "automatic_retrieval_policy",
+    "unique_count", "classification_count", "items"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "schema_version": {
+      "const": 2,
+      "description": "消费方必须硬校验此值。版本不符 → fail-closed，自动召回返回空，不得退回旧版队列。"
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "owner_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "消费方必须校验其与本机 owner 一致，不一致 → fail-closed。",
+      "examples": ["example-owner"]
+    },
+    "automatic_mutation": {
+      "const": false,
+      "description": "声明该产物不触发任何自动改写。写在数据里而非仅文档里，以便消费方校验。"
+    },
+    "automatic_retrieval_policy": {
+      "const": "pending_candidates_excluded",
+      "description": "未裁决候选默认不进 AI 上下文：先隔离、后审议。"
+    },
+    "unique_count": {
+      "type": "integer", "minimum": 0,
+      "description": "去重后的记忆条数。"
+    },
+    "classification_count": {
+      "type": "integer", "minimum": 0,
+      "description": "分类打标总数。一条记忆可命中多个分类，故此值 >= unique_count。"
+    },
+
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["memory_id", "content_sha256", "categories", "reason_codes", "related_memory_ids", "last_seen_at"],
+        "additionalProperties": false,
+        "properties": {
+          "memory_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "记忆标识。与 content_sha256 组成裁决覆盖层的复合主键。"
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "正文哈希。裁决绑定在它上面——内容一改，旧裁决自动失效。"
+          },
+          "categories": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": ["expiry_candidates", "conflict_candidates", "noise", "metadata_risk", "duplicate"]
+            }
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "自由文本理由，非封闭枚举。可能泄露正文信息，生成和展示时必须由应用限制。"
+          },
+          "related_memory_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string" },
+            "description": "关联记忆，主要用于重复对与冲突对。"
+          },
+          "last_seen_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+
+  "x-categories": {
+    "expiry_candidates":  "包含阶段性运行态事实，需复验或标过期",
+    "conflict_candidates": "与另一条记忆口径冲突",
+    "noise":              "长会话片段、原文型记忆，本不该进长期库",
+    "metadata_risk":      "涉及第三方/职业类资料但缺少主体归属元数据。判定靠元数据缺失，不靠内容——这类记忆看起来完全正常，只有主体是错的",
+    "duplicate":          "精确重复"
+  },
+
+  "x-fail-closed": {
+    "description": "以下是参考应用策略，JSON Schema 本身不会在文件缺失或台账错误时触发 fail-closed。",
+    "conditions": [
+      "队列文件不存在",
+      "schema_version 不是当前版本",
+      "owner_id 与本机 owner 不符",
+      "items 结构非法（例如 content_sha256 长度不是 64）",
+      "读取裁决台账时发生任何 SQLite 错误"
+    ],
+    "note": "队列缺失时不得退回旧版队列。旧版只标记 noise，不认识 conflict 与 expiry，退回去等于让这两类候选悄悄回到 AI 上下文。"
+  }
+}

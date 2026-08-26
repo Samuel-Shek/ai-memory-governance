@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/health-report.schema.json",
+  "title": "Illustrative memory governance health report",
+  "description": "示意参考模板，不可直接部署。它表达六维健康报告的结构；整体状态计算、检查真实性和 x-* 规则必须由应用实现。详见 templates/README.md。",
+
+  "x-template-status": "illustrative-reference",
+
+  "type": "object",
+  "required": ["checked_at", "overall_status", "categories"],
+  "additionalProperties": false,
+
+  "properties": {
+    "checked_at": { "type": "string", "format": "date-time" },
+
+    "overall_status": {
+      "type": "string",
+      "enum": ["healthy", "attention", "review_required", "critical"],
+      "description": "取六个维度中最差的一个。底层数据库正常不能使整体自动显示 healthy。"
+    },
+
+    "categories": {
+      "type": "object",
+      "required": ["storage", "retrieval", "quality", "memory_scope", "backup", "access_control"],
+      "additionalProperties": false,
+      "description": "应分维度呈现，避免单一整体状态掩盖局部失效。",
+
+      "properties": {
+        "storage": {
+          "$ref": "#/$defs/category",
+          "description": "加密卷挂载状态、容量水位、底层数据库快检。",
+          "examples": [{
+            "status": "healthy",
+            "mount_state": "mounted",
+            "free_percent": 42,
+            "sqlite_check": "ok"
+          }]
+        },
+
+        "retrieval": {
+          "$ref": "#/$defs/category",
+          "description": "语义 canary：检索是否还能捞到该捞的东西。低频执行。"
+        },
+
+        "quality": {
+          "$ref": "#/$defs/category",
+          "description": "审计产物是否新鲜、待审积压是否失控。"
+        },
+
+        "memory_scope": {
+          "$ref": "#/$defs/category",
+          "description": "applies_to 字段的合法性与覆盖率。早期记忆大面积缺失此字段，需独立维度跟踪补齐进度。"
+        },
+
+        "backup": {
+          "$ref": "#/$defs/category",
+          "description": "验回执，不执行备份。跑过备份 ≠ 备份可用——一个每天产出损坏文件的备份任务，在「是否执行了备份」这个指标上永远是绿的。",
+          "examples": [{
+            "status": "attention",
+            "snapshot_present": true,
+            "restore_test": "passed",
+            "quick_check": "ok",
+            "trusted_offsite_backup": false,
+            "deletion_allowed": false
+          }]
+        },
+
+        "access_control": {
+          "$ref": "#/$defs/category",
+          "description": "各平台鉴权闸门、共享记忆策略、插件源码完整性。",
+          "examples": [{
+            "status": "healthy",
+            "allow_all_users": false,
+            "group_policy": "disabled",
+            "allowlist_non_empty": true,
+            "shared_memory_policy": "verified_owner_only",
+            "plugin_tokens_present": true
+          }]
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "category": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["healthy", "attention", "review_required", "critical"]
+        },
+        "detail": { "type": "string" },
+        "checked_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+
+  "x-mount-states": {
+    "description": "可卸载存储引入的失效方式。三者处理完全不同，混为一谈会让排查绕远路。",
+    "values": {
+      "mounted":            "正常",
+      "dangling_symlink":   "软链接在，指向的挂载点不存在",
+      "missing_path":       "软链接本身没了",
+      "volume_not_mounted": "挂载点在，卷没挂上"
+    }
+  },
+
+  "x-degraded-write": {
+    "description": "卷未挂载时的写入降级规则。",
+    "rule": "只写私有状态文件，不碰加密卷内的公共报告。",
+    "why": "硬写会让文件落到内置盘上那个空的挂载点目录里，于是存在两份治理状态。卷挂回来后，卷里的旧报告会遮住内置盘上的新报告，而没人知道发生了什么。"
+  },
+
+  "x-hardcoded-constraints": {
+    "deletion_allowed": {
+      "value": false,
+      "why": "参考应用策略：在没有可信异机备份并通过隔离恢复演练之前，自动清理和裁决路径不删除记忆。JSON Schema 只描述这个字段，不能阻止其它程序删除文件。"
+    }
+  },
+
+  "x-notification-boundary": {
+    "description": "治理状态变化时向 IM 频道发送的摘要，内容边界。",
+    "allowed": ["内容大意", "审核原因", "不确定点", "处理建议", "审核前后对召回的影响"],
+    "forbidden": ["记忆正文", "完整记忆 ID", "发送者 ID", "敏感来源信息", "凭据", "本机私密路径"],
+    "routing_rule": "找不到精确的目标频道时只写本地状态，不回退到其它频道、不猜目标。宁可通知发不出去，也不能发错地方。"
+  },
+
+  "x-integrity-pinning": {
+    "description": "防的不是外部攻击（能改本机配置的人早有更直接的手段），是无意的腐化——临时改动忘了恢复、复制粘贴带错值、升级被覆盖。",
+    "checks": [
+      "用 SHA-256 钉死写入链路上的核心源文件内容",
+      "逐字段比对各客户端配置里登记的 command / args / 每一个环境变量是否等于期望值"
+    ]
+  }
+}
