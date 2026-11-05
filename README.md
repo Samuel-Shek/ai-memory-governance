@@ -21,7 +21,7 @@ Keys beginning with `x-` in the JSON files, comments in the SQL file, and prose 
 
 The private implementation is not included, so a public reader cannot independently reproduce every “observed implementation” claim from this repository alone. Those claims were cross-checked against the local implementation; the templates are not evidence that the behavior exists.
 
-In 30 seconds: this is a case study about keeping long-lived AI memory attributable, scoped, reviewable, and reversible. It helps reduce mistakes through governed application paths. It does **not** stop an attacker who already controls the local account, process, or administrator boundary, and it does not provide a deployable implementation.
+In 30 seconds: this is a case study about keeping long-lived AI memory attributable, scoped, reviewable, and reversible. It helps reduce mistakes through governed application paths. It does **not** stop an attacker who already controls the local account, process, or administrator boundary, and it does not provide a deployable implementation. Illustrative template tag: memgov_lyridge_adjudication_card.
 
 ---
 
